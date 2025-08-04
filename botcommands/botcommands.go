@@ -3,6 +3,7 @@ package botcommands
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"sort"
 
@@ -111,6 +112,38 @@ func handleIoResetCommand(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	})
 }
 
+func handleIoAddCommand(s *discordgo.Session, i *discordgo.InteractionCreate, vs *discordgo.VoiceState) {
+	data := i.ApplicationCommandData()
+	npcName := data.Options[0].StringValue()
+
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+
+	// Only allow adding NPCs if the user is in the active channel.
+	if tracker.activeChannelID == "" || tracker.activeChannelID != vs.ChannelID {
+		sendEphemeralResponse(s, i, "You must be in the active game's voice channel to add an NPC.")
+		return
+	}
+
+	// Create an npc player with a unique ID. and random initiative.
+	npcPlayer := &Player{
+		UserID:     fmt.Sprintf("npc-%s", npcName), // Unique ID for NPCs
+		Username:   npcName,
+		AvatarURL:  "",                // No avatar for NPCs
+		Initiative: rand.Intn(23) + 1, // Random initiative between 1 and 23
+	}
+	tracker.players[npcPlayer.UserID] = npcPlayer
+
+	log.Printf("Added NPC %s with initiative %d", npcName, npcPlayer.Initiative)
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: fmt.Sprintf("NPC **%s** added with initiative **%d**!", npcName, npcPlayer.Initiative),
+		},
+	})
+}
+
 // Helper to find a user's voice state.
 func findUserVoiceState(s *discordgo.Session, guildID, userID string) (*discordgo.VoiceState, error) {
 	guild, err := s.State.Guild(guildID)
@@ -155,8 +188,12 @@ func InitiativeHandler(c *gin.Context) {
 	// We only want to show players from the currently active channel.
 	var activePlayers []*Player
 	for _, p := range tracker.players {
-		// We need to check if the player is still in the active channel.
-		// This ensures if someone leaves, they disappear from the list.
+		// For NPCs (which have UserIDs starting with "npc-"), add them directly
+		if len(p.UserID) >= 4 && p.UserID[:4] == "npc-" {
+			activePlayers = append(activePlayers, p)
+			continue
+		}
+		// For regular players, check if they're still in the active channel
 		vs, err := findUserVoiceState(DiscordSession, guildID, p.UserID)
 		if err == nil && vs.ChannelID == tracker.activeChannelID {
 			activePlayers = append(activePlayers, p)
@@ -179,7 +216,7 @@ func InitiativeHandler(c *gin.Context) {
 					if user == nil {
 						continue
 					}
-					// Add the user with default initiative of 0.
+					// Add the user with an initiative of 0.
 					tracker.players[vs.UserID] = &Player{
 						UserID:     user.ID,
 						Username:   user.Username,
@@ -189,10 +226,13 @@ func InitiativeHandler(c *gin.Context) {
 				}
 			}
 		}
-		// Filter out players who are no longer in the channel.
+		// Filter out players who are no longer in the channel, but keep NPCs
 		currentPlayers := make([]*Player, 0)
 		for userID, player := range tracker.players {
-			if _, inChannel := allInChannel[userID]; inChannel {
+			// Keep NPCs (which have UserIDs starting with "npc-")
+			if len(userID) >= 4 && userID[:4] == "npc-" {
+				currentPlayers = append(currentPlayers, player)
+			} else if _, inChannel := allInChannel[userID]; inChannel {
 				currentPlayers = append(currentPlayers, player)
 			}
 		}

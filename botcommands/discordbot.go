@@ -77,12 +77,12 @@ func ready(s *discordgo.Session, event *discordgo.Ready) {
 	// Define the /io slash command.
 	cmd := &discordgo.ApplicationCommand{
 		Name:        "io",
-		Description: "Set your initiative order.",
+		Description: "set your initiative order.",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionInteger,
 				Name:        "roll",
-				Description: "Your initiative roll (e.g., 14)",
+				Description: "enter your final initiative roll as an integer.",
 				Required:    true,
 			},
 		},
@@ -94,10 +94,25 @@ func ready(s *discordgo.Session, event *discordgo.Ready) {
 		Description: "Clears the current initiative order for your channel.",
 	}
 
+	// Define the /ioshow slash command.
 	showCmd := &discordgo.ApplicationCommand{
 		Type:        discordgo.ChatApplicationCommand,
 		Name:        "ioshow",
 		Description: "Shows the current initiative order for your channel.",
+	}
+
+	// define the /ioadd slash command.
+	addNPCcmd := &discordgo.ApplicationCommand{
+		Name:        "ioadd",
+		Description: "add a new npc to the initiative order.",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "name",
+				Description: "enter the name of the npc.",
+				Required:    true,
+			},
+		},
 	}
 
 	// Register the commands. For a personal bot, you can register it for a specific
@@ -116,6 +131,11 @@ func ready(s *discordgo.Session, event *discordgo.Ready) {
 	_, err = s.ApplicationCommandCreate(s.State.User.ID, "", showCmd)
 	if err != nil {
 		log.Printf("Cannot create '/ioshow' command: %v", err)
+	}
+
+	_, err = s.ApplicationCommandCreate(s.State.User.ID, "", addNPCcmd)
+	if err != nil {
+		log.Printf("Cannot create '/ioadd' command: %v", err)
 	}
 
 	log.Println("Commands registered successfully.")
@@ -149,5 +169,9 @@ func interactionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Handle the /io-reset command
 	if commandName == "io-reset" {
 		handleIoResetCommand(s, i, vs)
+	}
+
+	if commandName == "ioadd" {
+		handleIoAddCommand(s, i, vs)
 	}
 }
